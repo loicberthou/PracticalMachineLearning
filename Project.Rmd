@@ -1,22 +1,81 @@
 ---
-title: "Practical Machine Learning Project"
+title: "Coursera Practical Machine Learning Class - Project"
 author: "Loïc BERTHOU"
 date: "August 23, 2015"
 output: html_document
 ---
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+```{r, echo=FALSE}
+set.seed(20150823)
+```
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+## Executive Summary
+
+This document aims at demonstrating how we can use devices such as Jawbone Up, Nike FuelBand, and Fitbit in order to track the quality of exercises instead of quantity like it is the case most of the time. In our specific case, we are trying to predict if an athlete has perform barbell lifts correctly or incorrectly.
+
+## Data 
+
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+## Data Cleaning
+
+We will start by loading the _training_ and _testing_ datasets.
+
+```{r, cache=TRUE}
+trainingSet = read.csv("pml-training.csv", header = TRUE, stringsAsFactors = FALSE)
+testingSet = read.csv("pml-testing.csv", header = TRUE, stringsAsFactors = FALSE)
+```
+
+Let's have a brief overview of them.
 
 ```{r}
-summary(cars)
+str(trainingSet)
+str(testingSet)
 ```
 
-You can also embed plots, for example:
+Our initial exploratory data analysis shows that some columns contain N/A values. Let's first count these N/A values.
 
-```{r, echo=FALSE}
-plot(cars)
+```{r, cache=TRUE}
+isNaMatrixTraining <- apply(trainingSet, 2, is.na)
+countNaMatrixTraining <- apply(isNaMatrixTraining, 2, sum)
+countNaMatrixTraining <- as.data.frame(countNaMatrixTraining)
+countNaMatrixTraining
+
+isNaMatrixTesting <- apply(testingSet, 1, is.na)
+countNaMatrixTesting <- apply(isNaMatrixTesting, 1, sum)
+countNaMatrixTesting <- as.data.frame(countNaMatrixTesting)
+countNaMatrixTesting
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Since the number of N/A values is non-neglectable, we're going to remove all these columns.
+
+```{r}
+trainingSetClean <- trainingSet[, countNaMatrixTesting[,1] == 0]
+testingSetClean <- testingSet[, countNaMatrixTesting[,1] == 0]
+```
+
+We will also remove the timestamp columns that will not be used in the analysis.
+
+```{r}
+trainingSetClean <- subset(trainingSetClean, select=-c(X, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, num_window))
+testingSetClean <- subset(testingSetClean, select=-c(X, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, num_window))
+```
+
+Now we will make the factor variables as factor columns.
+
+```{r}
+trainingSetClean$user_name <- as.factor(trainingSetClean$user_name)
+trainingSetClean$classe <- as.factor(trainingSetClean$classe)
+
+testingSetClean$user_name <- as.factor(testingSetClean$user_name)
+# testingSetClean$classe <- as.factor(testingSetClean$classe) # This column doesn't exist in testing set
+
+```
