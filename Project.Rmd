@@ -6,6 +6,7 @@ output: html_document
 ---
 
 ```{r, echo=FALSE}
+library(caret)
 set.seed(20150823)
 ```
 
@@ -78,4 +79,37 @@ trainingSetClean$classe <- as.factor(trainingSetClean$classe)
 testingSetClean$user_name <- as.factor(testingSetClean$user_name)
 # testingSetClean$classe <- as.factor(testingSetClean$classe) # This column doesn't exist in testing set
 
+```
+
+The model is being generated with the Caret package and the prediction tree method.
+
+```{r}
+fit <- train(classe ~ ., method="rpart", data=trainingSetClean)
+print(fit$finalModel)
+```
+
+Now we can predict the class for the test dataset.
+
+```{r}
+testingSetClean$classe <- predict(fit, testingSetClean)
+```
+
+We will extract the result data that will be submitted for grading.
+
+```{r}
+results <- subset(testingSetClean, select = c(problem_id, classe))
+results
+```
+
+And generate the result files.
+
+```{r}
+pml_write_files = function(x){
+    n = length(x)
+    for(i in 1:n){
+        filename = paste0("problem_id_",i,".txt")
+        write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+    }
+}
+pml_write_files(results$classe)
 ```

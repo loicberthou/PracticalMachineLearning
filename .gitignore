@@ -17,6 +17,7 @@ vignettes/*.pdf
 
 # Data Files
 *.csv
+problem_id_*.txt
 
 # Project cache files
 Project_cache/*

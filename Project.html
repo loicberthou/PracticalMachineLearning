@@ -74,6 +74,8 @@ img {
 </div>
 
 
+<pre><code>## Loading required package: lattice
+## Loading required package: ggplot2</code></pre>
 <div id="executive-summary" class="section level2">
 <h2>Executive Summary</h2>
 <p>This document aims at demonstrating how we can use devices such as Jawbone Up, Nike FuelBand, and Fitbit in order to track the quality of exercises instead of quantity like it is the case most of the time. In our specific case, we are trying to predict if an athlete has perform barbell lifts correctly or incorrectly.</p>
@@ -639,6 +641,59 @@ trainingSetClean$classe &lt;- as.factor(trainingSetClean$classe)
 
 testingSetClean$user_name &lt;- as.factor(testingSetClean$user_name)
 # testingSetClean$classe &lt;- as.factor(testingSetClean$classe) # This column doesn't exist in testing set</code></pre>
+<p>The model is being generated with the Caret package and the prediction tree method.</p>
+<pre class="r"><code>fit &lt;- train(classe ~ ., method=&quot;rpart&quot;, data=trainingSetClean)</code></pre>
+<pre><code>## Loading required package: rpart</code></pre>
+<pre class="r"><code>print(fit$finalModel)</code></pre>
+<pre><code>## n= 19622 
+## 
+## node), split, n, loss, yval, (yprob)
+##       * denotes terminal node
+## 
+##  1) root 19622 14042 A (0.28 0.19 0.17 0.16 0.18)  
+##    2) roll_belt&lt; 130.5 17977 12411 A (0.31 0.21 0.19 0.18 0.11)  
+##      4) pitch_forearm&lt; -33.95 1578    10 A (0.99 0.0063 0 0 0) *
+##      5) pitch_forearm&gt;=-33.95 16399 12401 A (0.24 0.23 0.21 0.2 0.12)  
+##       10) magnet_dumbbell_y&lt; 439.5 13870  9953 A (0.28 0.18 0.24 0.19 0.11)  
+##         20) roll_forearm&lt; 123.5 8643  5131 A (0.41 0.18 0.18 0.17 0.061) *
+##         21) roll_forearm&gt;=123.5 5227  3500 C (0.077 0.18 0.33 0.23 0.18) *
+##       11) magnet_dumbbell_y&gt;=439.5 2529  1243 B (0.032 0.51 0.043 0.22 0.19) *
+##    3) roll_belt&gt;=130.5 1645    14 E (0.0085 0 0 0 0.99) *</code></pre>
+<p>Now we can predict the class for the test dataset.</p>
+<pre class="r"><code>testingSetClean$classe &lt;- predict(fit, testingSetClean)</code></pre>
+<p>We will extract the result data that will be submitted for grading.</p>
+<pre class="r"><code>results &lt;- subset(testingSetClean, select = c(problem_id, classe))
+results</code></pre>
+<pre><code>##    problem_id classe
+## 1           1      C
+## 2           2      A
+## 3           3      C
+## 4           4      A
+## 5           5      A
+## 6           6      C
+## 7           7      C
+## 8           8      A
+## 9           9      A
+## 10         10      A
+## 11         11      C
+## 12         12      C
+## 13         13      C
+## 14         14      A
+## 15         15      C
+## 16         16      A
+## 17         17      A
+## 18         18      A
+## 19         19      A
+## 20         20      C</code></pre>
+<p>And generate the result files.</p>
+<pre class="r"><code>pml_write_files = function(x){
+    n = length(x)
+    for(i in 1:n){
+        filename = paste0(&quot;problem_id_&quot;,i,&quot;.txt&quot;)
+        write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+    }
+}
+pml_write_files(results$classe)</code></pre>
 </div>
 
 
