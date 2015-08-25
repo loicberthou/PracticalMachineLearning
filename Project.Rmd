@@ -6,7 +6,6 @@ output: html_document
 ---
 
 ```{r, echo=FALSE}
-library(caret)
 set.seed(20150823)
 ```
 
@@ -31,8 +30,8 @@ The data for this project come from this source: http://groupware.les.inf.puc-ri
 We will start by loading the _training_ and _testing_ datasets.
 
 ```{r, cache=TRUE}
-trainingSet = read.csv("pml-training.csv", header = TRUE, stringsAsFactors = FALSE)
-testingSet = read.csv("pml-testing.csv", header = TRUE, stringsAsFactors = FALSE)
+trainingSet = read.csv("pml-training.csv", header = TRUE, stringsAsFactors = FALSE, na.strings = c("", "#DIV/0!", "NA"))
+testingSet = read.csv("pml-testing.csv", header = TRUE, stringsAsFactors = FALSE, na.strings = c("", "#DIV/0!", "NA"))
 ```
 
 Let's have a brief overview of them.
@@ -45,8 +44,8 @@ str(testingSet)
 Our initial exploratory data analysis shows that some columns contain N/A values. Let's first count these N/A values.
 
 ```{r, cache=TRUE}
-isNaMatrixTraining <- apply(trainingSet, 2, is.na)
-countNaMatrixTraining <- apply(isNaMatrixTraining, 2, sum)
+isNaMatrixTraining <- apply(trainingSet, 1, is.na)
+countNaMatrixTraining <- apply(isNaMatrixTraining, 1, sum)
 countNaMatrixTraining <- as.data.frame(countNaMatrixTraining)
 countNaMatrixTraining
 
@@ -59,33 +58,97 @@ countNaMatrixTesting
 Since the number of N/A values is non-neglectable, we're going to remove all these columns.
 
 ```{r}
-trainingSetClean <- trainingSet[, countNaMatrixTesting[,1] == 0]
-testingSetClean <- testingSet[, countNaMatrixTesting[,1] == 0]
+# Combine the columns that contain N/A values.
+noNaMatrix <- as.data.frame(cbind(countNaMatrixTraining[,1] == 0, countNaMatrixTesting[,1] == 0))
+names(noNaMatrix) <- c("training", "testing")
+noNaMatrix$combined <- noNaMatrix$training & noNaMatrix$testing
+
+trainingSetClean <- trainingSet[, noNaMatrix$combined]
+testingSetClean <- testingSet[, noNaMatrix$combined]
 ```
 
 We will also remove the timestamp columns that will not be used in the analysis.
 
 ```{r}
-trainingSetClean <- subset(trainingSetClean, select=-c(X, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, num_window))
-testingSetClean <- subset(testingSetClean, select=-c(X, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, num_window))
+trainingSetClean <- subset(trainingSetClean, select=-c(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, num_window))
+testingSetClean <- subset(testingSetClean, select=-c(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, num_window))
 ```
 
 Now we will make the factor variables as factor columns.
 
 ```{r}
-trainingSetClean$user_name <- as.factor(trainingSetClean$user_name)
 trainingSetClean$classe <- as.factor(trainingSetClean$classe)
-
-testingSetClean$user_name <- as.factor(testingSetClean$user_name)
-# testingSetClean$classe <- as.factor(testingSetClean$classe) # This column doesn't exist in testing set
-
 ```
 
-The model is being generated with the Caret package and the prediction tree method.
+## Data Modeling
+
+We first load the libraries for machine learning and parallelization (to set-up our system to use multiple cores).
 
 ```{r}
-fit <- train(classe ~ ., method="rpart", data=trainingSetClean)
+library(caret)
+library(doParallel)
+numcores<-detectCores()
+# Create the cluster of workers. It is a good practise to close it when computation is done.
+cl <- makeCluster(numcores) 
+registerDoParallel(cl)
+```
+
+### Sub-Sampling
+
+Since we know that our training set contains many observations (`r nrow(trainingSetClean)` rows), the training algorithm will take a long time. We will then first use a small sample of the original training sample to investigate the best model to use in our machine learning algorithm.
+
+```{r}
+# Sub-sampling 500 rows randomly
+sample1 <- trainingSetClean[sample(1:nrow(trainingSetClean), 500, replace=FALSE),]
+
+# Creating the training and testing data partitions (75% training)
+dataPartitions <- createDataPartition(sample1$classe, p=0.75, list=FALSE)
+training1 <- sample1[dataPartitions[, 1], ]
+testing1 <- sample1[-dataPartitions[, 1], ]
+
+# Checking the size our new sub datasets
+dim(training1)
+dim(testing1)
+```
+
+### The model is being generated with the Caret package and the 'Random Forest' method.
+
+```{r}
+fitRf <- train(classe ~ ., method="rf", data=training1)
+print(fitRf$finalModel)
+```
+
+Let's predict the values on the sub-testing sample anc compare them to the reference.
+
+```{r}
+predictRf <- predict(fitRf, testing1)
+confusionMatrix(predictRf, testing1$classe)
+```
+
+### The model is being generated with the Caret package and the 'Prediction Tree' method.
+
+```{r}
+fitRpart <- train(classe ~ ., method="rpart", data=training1)
+print(fitRpart$finalModel)
+```
+
+Let's predict the values on the sub-testing sample anc compare them to the reference.
+
+```{r}
+predictRpart <- predict(fitRpart, testing1)
+confusionMatrix(predictRpart, testing1$classe)
+```
+
+### Choosing the model
+
+After trying out a few different models, the **Random Forest** seems like the most accurate. We will then run the training on the whole training set to create the final model used for our prediction.
+
+```{r, cache=TRUE}
+fit <- train(classe ~ ., method="rf", data=trainingSetClean)
 print(fit$finalModel)
+
+# Good practice to shut down the workers.
+stopCluster(cl)
 ```
 
 Now we can predict the class for the test dataset.
@@ -112,4 +175,22 @@ pml_write_files = function(x){
     }
 }
 pml_write_files(results$classe)
+```
+
+## Appendix
+
+### Appendix 1. Exploratory Code
+
+```{r}
+dataPartitions <- createDataPartition(trainingSetClean$classe, times=10, p=0.75, list=FALSE)
+
+training1 <- trainingSetClean[dataPartitions[, 1], ]
+testing1 <- trainingSetClean[-dataPartitions[, 1], ]
+dim(training1)
+dim(testing1)
+
+training1 <- createFolds(trainingSetClean$classe, k=10, returnTrain = TRUE)
+testing1 <- createFolds(trainingSetClean$classe, k=10, returnTrain = FALSE)
+sapply(training1, length)
+sapply(testing1, length)
 ```
