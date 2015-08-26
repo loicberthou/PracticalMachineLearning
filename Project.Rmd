@@ -114,8 +114,13 @@ dim(testing1)
 ### The model is being generated with the Caret package and the 'Random Forest' method.
 
 ```{r}
-fitRf <- train(classe ~ ., method="rf", data=training1)
-print(fitRf$finalModel)
+timeRf.start <- Sys.time()
+fitRfControl <- trainControl(method = "cv", number = 5)
+fitRf <- train(classe ~ ., data = training1, method = "rf", trControl = fitRfControl, prox = TRUE)
+timeRf.end <- Sys.time()
+timeRf.taken <- timeRf.end - timeRf.start
+fitRf$finalModel
+timeRf.taken
 ```
 
 Let's predict the values on the sub-testing sample anc compare them to the reference.
@@ -125,11 +130,34 @@ predictRf <- predict(fitRf, testing1)
 confusionMatrix(predictRf, testing1$classe)
 ```
 
+### The model is being generated with the Caret package and the 'Boosted Tree' method.
+
+```{r}
+timeGbm.start <- Sys.time()
+fitGmbControl <- trainControl(method = "repeatedcv", number = 5, repeats = 5)
+fitGbm <- train(classe ~ ., data = training1, method = "gbm", trControl = fitGmbControl, verbose = FALSE)
+timeGbm.end <- Sys.time()
+timeGbm.taken <- timeGbm.end - timeGbm.start
+fitGbm
+timeGbm.taken
+```
+
+Let's predict the values on the sub-testing sample anc compare them to the reference.
+
+```{r}
+predictGbm <- predict(fitGbm, testing1)
+confusionMatrix(predictGbm, testing1$classe)
+```
+
 ### The model is being generated with the Caret package and the 'Prediction Tree' method.
 
 ```{r}
+timeRpart.start <- Sys.time()
 fitRpart <- train(classe ~ ., method="rpart", data=training1)
+timeRpart.end <- Sys.time()
+timeRpart.taken <- timeRpart.end - timeRpart.start
 print(fitRpart$finalModel)
+timeRpart.taken
 ```
 
 Let's predict the values on the sub-testing sample anc compare them to the reference.
@@ -144,8 +172,13 @@ confusionMatrix(predictRpart, testing1$classe)
 After trying out a few different models, the **Random Forest** seems like the most accurate. We will then run the training on the whole training set to create the final model used for our prediction.
 
 ```{r, cache=TRUE}
-fit <- train(classe ~ ., method="rf", data=trainingSetClean)
-print(fit$finalModel)
+time.start <- Sys.time()
+fitControl <- trainControl(method = "cv", number = 5)
+fit <- train(classe ~ ., data = training, method = "rf", trControl = fitControl, prox = TRUE)
+time.end <- Sys.time()
+time.taken <- time.end - time.start
+fit$finalModel
+time.taken
 
 # Good practice to shut down the workers.
 stopCluster(cl)
