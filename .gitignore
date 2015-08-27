@@ -1,3 +1,6 @@
+# OS X folder customization
+.DS_Store
+
 # History files
 .Rhistory
 .Rapp.history
@@ -22,3 +25,4 @@ problem_id_*.txt
 # Project cache files
 Project_cache/*
 
+.Rproj.user

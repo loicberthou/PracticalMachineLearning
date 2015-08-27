@@ -29,7 +29,7 @@ The data for this project come from this source: http://groupware.les.inf.puc-ri
 
 We will start by loading the _training_ and _testing_ datasets.
 
-```{r, cache=TRUE}
+```{r, cache=TRUE, cache=TRUE}
 trainingSet = read.csv("pml-training.csv", header = TRUE, stringsAsFactors = FALSE, na.strings = c("", "#DIV/0!", "NA"))
 testingSet = read.csv("pml-testing.csv", header = TRUE, stringsAsFactors = FALSE, na.strings = c("", "#DIV/0!", "NA"))
 ```
@@ -84,22 +84,23 @@ trainingSetClean$classe <- as.factor(trainingSetClean$classe)
 
 We first load the libraries for machine learning and parallelization (to set-up our system to use multiple cores).
 
-```{r}
+```{r, message=FALSE}
 library(caret)
 library(doParallel)
-numcores<-detectCores()
-# Create the cluster of workers. It is a good practise to close it when computation is done.
-cl <- makeCluster(numcores) 
+library(randomForest)
+
+# Create the cluster of workers
+cl <- makeCluster(detectCores())
 registerDoParallel(cl)
 ```
 
 ### Sub-Sampling
 
-Since we know that our training set contains many observations (`r nrow(trainingSetClean)` rows), the training algorithm will take a long time. We will then first use a small sample of the original training sample to investigate the best model to use in our machine learning algorithm.
+Since we know that our training set contains many observations (`r nrow(trainingSetClean)` rows), we fear that the training algorithm would take a long time. We will then first use a small sample of the original training sample to investigate the best model to use in our machine learning algorithm.
 
 ```{r}
-# Sub-sampling 500 rows randomly
-sample1 <- trainingSetClean[sample(1:nrow(trainingSetClean), 500, replace=FALSE),]
+# Sub-sampling 2000 rows randomly
+sample1 <- trainingSetClean[sample(1:nrow(trainingSetClean), 2000, replace=FALSE),]
 
 # Creating the training and testing data partitions (75% training)
 dataPartitions <- createDataPartition(sample1$classe, p=0.75, list=FALSE)
@@ -111,47 +112,109 @@ dim(training1)
 dim(testing1)
 ```
 
-### The model is being generated with the Caret package and the 'Random Forest' method.
+### The model is being generated with the 'Random Forest' method.
 
-```{r}
-fitRf <- train(classe ~ ., method="rf", data=training1)
-print(fitRf$finalModel)
+```{r, cache=TRUE}
+timeRf.start <- Sys.time()
+#fitRfControl <- trainControl(method = "cv", number = 5)
+#fitRf <- train(classe ~ ., data = training1, method = "rf", trControl = fitRfControl, prox = TRUE)
+fitRf <- randomForest(classe ~ ., data = training1)
+timeRf.end <- Sys.time()
+timeRf.taken <- timeRf.end - timeRf.start
+fitRf
+timeRf.taken
 ```
 
 Let's predict the values on the sub-testing sample anc compare them to the reference.
 
 ```{r}
 predictRf <- predict(fitRf, testing1)
-confusionMatrix(predictRf, testing1$classe)
+confRf <- confusionMatrix(predictRf, testing1$classe)
+confRf
 ```
+
+With this small sample, the model was generated quite fast (`r sprintf("%.1f", timeRf.taken)` seconds) and we already have an accuracy rate of `r sprintf("%.1f", confRf$overall[1] * 100)`% with a 95% confidence interval between `r sprintf("%.1f", confRf$overall[3] * 100)`% and `r sprintf("%.1f", confRf$overall[4] * 100)`% !
+This one looks like our winner but let's still investigate other methods.
+
+### The model is being generated with the Caret package and the 'Boosted Tree' method.
+
+```{r, cache=TRUE}
+timeGbm.start <- Sys.time()
+fitGmbControl <- trainControl(method = "repeatedcv", number = 5, repeats = 5)
+fitGbm <- train(classe ~ ., data = training1, method = "gbm", trControl = fitGmbControl, verbose = FALSE)
+timeGbm.end <- Sys.time()
+timeGbm.taken <- timeGbm.end - timeGbm.start
+fitGbm
+timeGbm.taken
+```
+
+Let's predict the values on the sub-testing sample and compare them to the reference.
+
+```{r}
+predictGbm <- predict(fitGbm, testing1)
+confGbm <- confusionMatrix(predictGbm, testing1$classe)
+confGbm
+```
+
+This method is slower (`r sprintf("%.1f", timeGbm.taken)` seconds) and the accuracy rate is below the previous method at `r sprintf("%.1f", confGbm$overall[1] * 100)`% with a 95% confidence interval between `r sprintf("%.1f", confGbm$overall[3] * 100)`% and `r sprintf("%.1f", confGbm$overall[4] * 100)`%.
 
 ### The model is being generated with the Caret package and the 'Prediction Tree' method.
 
-```{r}
+```{r, cache=TRUE}
+timeRpart.start <- Sys.time()
 fitRpart <- train(classe ~ ., method="rpart", data=training1)
+timeRpart.end <- Sys.time()
+timeRpart.taken <- timeRpart.end - timeRpart.start
 print(fitRpart$finalModel)
+timeRpart.taken
 ```
 
 Let's predict the values on the sub-testing sample anc compare them to the reference.
 
 ```{r}
 predictRpart <- predict(fitRpart, testing1)
-confusionMatrix(predictRpart, testing1$classe)
+confRpart <- confusionMatrix(predictRpart, testing1$classe)
+confRpart
 ```
+
+This method is fast (`r sprintf("%.1f", timeRpart.taken)` seconds) but the accuracy rate is bad at `r sprintf("%.1f", confRpart$overall[1] * 100)`% with a 95% confidence interval between `r sprintf("%.1f", confRpart$overall[3] * 100)`% and `r sprintf("%.1f", confRpart$overall[4] * 100)`%.
 
 ### Choosing the model
 
 After trying out a few different models, the **Random Forest** seems like the most accurate. We will then run the training on the whole training set to create the final model used for our prediction.
 
+We will first divide our origianl training set into two parts for the training and final validation. We are using 85% of the original training set for training and the 15% left will be used for cross validation.
+
 ```{r, cache=TRUE}
-fit <- train(classe ~ ., method="rf", data=trainingSetClean)
-print(fit$finalModel)
+inTrain <- createDataPartition(trainingSetClean$classe, p = 0.85, list = FALSE)
+trainingSetRf <- trainingSetClean[inTrain, ]
+validationSetRf <- trainingSetClean[-inTrain, ]
+
+time.start <- Sys.time()
+# I am calling the randomForest function directly because the train() function makes it too slow
+#fitControl <- trainControl(method = "cv", number = 5)
+#fit <- train(classe ~ ., data = trainingSetRf, method = "rf", trControl = fitControl, ntree = 10)
+fit <- randomForest(classe ~ ., data = trainingSetRf, ntree = 500)
+time.end <- Sys.time()
+time.taken <- time.end - time.start
+fit
+time.taken
 
 # Good practice to shut down the workers.
 stopCluster(cl)
 ```
 
-Now we can predict the class for the test dataset.
+Now we can predict the class for the validation dataset.
+
+```{r}
+validationSetRf$prediction <- predict(fit, validationSetRf)
+confFit <- confusionMatrix(validationSetRf$prediction, validationSetRf$classe)
+confFit
+```
+
+By validating against our validation set, we find that the model was accurate at `r sprintf("%.1f", confFit$overall[1] * 100)`% with a 95% that it will be accurate between `r sprintf("%.1f", confFit$overall[3] * 100)`% and `r sprintf("%.1f", confFit$overall[4] * 100)`%.
+
+Now we can predict the class for the final test dataset.
 
 ```{r}
 testingSetClean$classe <- predict(fit, testingSetClean)
@@ -177,20 +240,13 @@ pml_write_files = function(x){
 pml_write_files(results$classe)
 ```
 
-## Appendix
+## Note on optimisation of the methods
 
-### Appendix 1. Exploratory Code
+After having had problems of performance, I have discovered that using randomForest was better for performance and did not affect the results.
+
+Some other improvements are possible. As you can see in the plot below, I could reduce the _ntree_ parameter to make the calculation faster and still have a very good accuracy (if ntree > 200)
 
 ```{r}
-dataPartitions <- createDataPartition(trainingSetClean$classe, times=10, p=0.75, list=FALSE)
-
-training1 <- trainingSetClean[dataPartitions[, 1], ]
-testing1 <- trainingSetClean[-dataPartitions[, 1], ]
-dim(training1)
-dim(testing1)
-
-training1 <- createFolds(trainingSetClean$classe, k=10, returnTrain = TRUE)
-testing1 <- createFolds(trainingSetClean$classe, k=10, returnTrain = FALSE)
-sapply(training1, length)
-sapply(testing1, length)
+plot(fit)
 ```
+
