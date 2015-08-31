@@ -10,6 +10,7 @@
 
 # RStudio files
 .Rproj.user/
+.RData
 
 # produced vignettes
 vignettes/*.html
@@ -25,4 +26,3 @@ problem_id_*.txt
 # Project cache files
 Project_cache/*
 
-.Rproj.user
